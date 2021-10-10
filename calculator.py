@@ -1,2 +1,3 @@
 def calculate(input_file, output_file):
-    return input_file  # TODO: replace
+    print(f"Calculating: {input_file}, {output_file}")  # TODO: calculator
+    return True
