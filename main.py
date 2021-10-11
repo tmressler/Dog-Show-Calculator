@@ -1,7 +1,8 @@
 import sys
-from os.path import expanduser
+import os
 from PyQt5.QtWidgets import *
-from PyQt5.Qt import QRect
+from PyQt5 import QtCore
+from PyQt5.QtGui import QIcon
 
 from calculator import calculate
 
@@ -15,30 +16,46 @@ class MainWindow(QWidget):
         # set up widgets
         self.input_file_field = QLineEdit()
         self.input_file_field.editingFinished.connect(self.update_output_field)
-        select_file_button = QPushButton('open')
+        select_file_button = QPushButton()
+        select_file_button.setIcon(QIcon("document-open.svg"))
         select_file_button.clicked.connect(self.select_file)
         self.output_file_field = QLineEdit()
         self.output_file_field.editingFinished.connect(self.output_manually_changed)
         calculate_button = QPushButton('Calculate')
         calculate_button.clicked.connect(self.calculate_function)
+        self.status_field = QLabel()
+        self.status_field.setAlignment(QtCore.Qt.AlignCenter)
+        self.status_field.setText("Status: Idle")
 
         # add widgets to the layout
         layout = QVBoxLayout()
         layout.addWidget(QLabel('Input File'))
-        layout.addWidget(self.input_file_field)
-        layout.addWidget(select_file_button)
+        input_field_layout = QHBoxLayout()
+        input_field_layout.addWidget(self.input_file_field)
+        input_field_layout.addWidget(select_file_button)
+        layout.addLayout(input_field_layout)
         layout.addWidget(QLabel('Output File'))
         layout.addWidget(self.output_file_field)
-        layout.addWidget(calculate_button)
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(calculate_button)
+        status_layout.addWidget(self.status_field)
+        layout.addLayout(status_layout)
 
         # set layout
         self.setLayout(layout)
 
+        # finish setting up some other settings
+        self.setWindowTitle("Trip's Calculator")
+        self.setGeometry(100, 100, 128*3, 0)
+
     def select_file(self) -> None:
-        window = FileSelectionWindow()
-        window.setGeometry(QRect(100, 100, 100, 100))
-        window.show()
-        print("select complete")
+        """
+        Opens a window to allow the user to select a file, then updates the output field.
+        """
+        self.status_field.setText("Status: Waiting for input file")
+        self.input_file_field.setText(QFileDialog.getOpenFileName(self, 'Open File', os.getenv('HOME'))[0])
+        self.update_output_field()
+        self.status_field.setText("Status: Idle")
 
     def update_output_field(self) -> None:
         """
@@ -60,27 +77,12 @@ class MainWindow(QWidget):
         """
         Calculates the scores of the input file and updates the status in the window.
         """
-        if calculate(self.input_file_field.text(), self.output_file_field.text()):
-            print("Success")
+        self.status_field.setText("Status: Calculating")
+        status = calculate(self.input_file_field.text(), self.output_file_field.text())
+        if status:
+            self.status_field.setText("Status: Complete")
         else:
-            print("Failed")
-
-
-class FileSelectionWindow(QWidget):
-    def __init__(self):
-        QWidget.__init__(self)
-
-        home_directory = expanduser('~')
-
-        layout = QVBoxLayout()
-        model = QDirModel()
-        view = QTreeView()
-        view.setModel(model)
-        view.setRootIndex(model.index(home_directory))
-
-        layout.addWidget(view)
-
-        self.setLayout(layout)
+            self.status_field.setText("Error")
 
 
 if __name__ == '__main__':
