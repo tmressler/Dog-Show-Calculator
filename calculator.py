@@ -38,8 +38,8 @@ High triple ( rally advanced b, rally excellent b, and rally master)
 '''
 
 
-def calculate(input_file, output_file):
-    def find_variable_names(dataframe: pandas.core.frame.DataFrame) -> tuple[str, str]:
+def calculate(input_file: str, output_file: str, break_tie: bool = False) -> bool:
+    def find_variable_names(dataframe: DataFrame) -> tuple[str, str]:
         # determine class column
         r = re.compile(r"[Cc]lass(es)?")
         matches = list(filter(r.match, dataframe))
@@ -68,19 +68,25 @@ def calculate(input_file, output_file):
         :param contestants: a dataframe of contestants
         :return: a dataframe of contestants
         """
-        # TODO: move method here
+        # replace + signs with numeric value for sorting  // TODO: could be written more pythonic
+        for i, score in enumerate(contestants[score_name]):
+            plus_value = 0
+            if type(score) is str and score[-1] == '+':
+                while score[-1] == '+':
+                    plus_value += 0.001  # scores shouldn't be in increments of more than 0.5
+                    score = score[:-1]
+                contestants[score_name][i] = float(score) + plus_value
 
         return contestants
 
     def dec_to_plus(contestants: DataFrame) -> DataFrame:
-        # TODO: move method here
-        return
-
-    def find_class_winners(contestants: DataFrame) -> DataFrame:
-        class_winners = contestants.sort_values('Score', ascending=False).iloc[:4]
-
+        """
+        Converts the scores in a dataframe with hundreds decimal places to pluses. For example '192.001' -> '192+'
+        :param contestants: a dataframe of contestants
+        :return: a dataframe of contestants
+        """
         # replace numeric value with + signs for display  // TODO: could be written more pythonic
-        for i, score in enumerate(class_winners[score_name]):
+        for i, score in enumerate(contestants[score_name]):
             str_score = str(score)
             if '.' in str_score:
                 if str_score[::-1].index('.') == 3:
@@ -91,31 +97,34 @@ def calculate(input_file, output_file):
                     else:
                         plus_value = '+'
                     if int(str_score[4]) == 5:
-                        class_winners[score_name].iloc[i] = str_score[:5] + plus_value
+                        contestants[score_name].iloc[i] = str_score[:5] + plus_value
                     else:
-                        class_winners[score_name].iloc[i] = str_score[:3] + plus_value
+                        contestants[score_name].iloc[i] = str_score[:3] + plus_value
+
+        return contestants
+
+    def find_class_winners(contestants: DataFrame, dog_class: str) -> DataFrame:
+        """
+        Find the top four winners of a class.
+        :param contestants: the contestants
+        :param dog_class: the class to filter by
+        :return: the winners of the class
+        """
+        # pull out contestants by class and who have scores
+        contestants = contestants.loc[(contestants[class_name] == dog_class) &
+                                      ((contestants[score_name].apply(lambda x: isinstance(x, int))) |
+                                       (contestants[score_name].apply(lambda x: isinstance(x, float))))]
+
+        class_winners = contestants.sort_values('Score', ascending=False).iloc[:4]
+        class_winners = dec_to_plus(class_winners)
 
         return class_winners
 
-    def find_award_winners(contestants: pandas.core.frame.DataFrame, break_tie: bool) -> pandas.core.frame.DataFrame:
+    def find_award_winners(contestants: DataFrame, break_tie: bool = False) -> DataFrame:
         award_winners = contestants.sort_values('Score', ascending=False).iloc[:4]  # TODO: implement break tie
         # TODO: import award hierarchy to determine tiebreaking
 
-        # replace numeric value with + signs for display  # TODO: could be written more pythonic
-        for i, score in enumerate(award_winners[score_name]):
-            str_score = str(score)
-            if '.' in str_score:
-                if str_score[::-1].index('.') == 3:
-                    if str_score[-1] == '3':
-                        plus_value = '+++'
-                    elif str_score[-1] == '2':
-                        plus_value = '++'
-                    else:
-                        plus_value = '+'
-                    if int(str_score[4]) == 5:
-                        award_winners[score_name].iloc[i] = str_score[:5] + plus_value
-                    else:
-                        award_winners[score_name].iloc[i] = str_score[:3] + plus_value
+        award_winners = dec_to_plus(award_winners)
 
         return award_winners
 
@@ -132,34 +141,22 @@ def calculate(input_file, output_file):
 
     classes = data[class_name].unique()  # find set of classes
 
-    # replace + signs with numeric value for sorting  // TODO: could be written more pythonic
-    for i, score in enumerate(data[score_name]):
-        plus_value = 0
-        if type(score) is str and score[-1] == '+':
-            while score[-1] == '+':
-                plus_value += 0.001  # scores shouldn't be in increments of more than 0.5
-                score = score[:-1]
-            data[score_name][i] = float(score) + plus_value
+    data = plus_to_dec(data)
 
     for class_ in classes:
         # skip nan class
         if pandas.isna(class_):
             continue
 
-        # pull out contestants by class and who have scores
-        contestants = data.loc[(data[class_name] == class_) &
-                               ((data[score_name].apply(lambda x: isinstance(x, int))) |
-                                (data[score_name].apply(lambda x: isinstance(x, float))))]
-        winners = find_class_winners(contestants)
-
+        winners = find_class_winners(data, class_)
         write_winners(winners)
 
     # find High in Trial
-    contestants = data.loc[(~data[class_name].isna()) & (data[class_name].str.contains(' B')) &
+    hit_contestants = data.loc[(~data[class_name].isna()) & (data[class_name].str.contains(' B')) &
                                ((data[score_name].apply(lambda x: isinstance(x, int))) |
                                 (data[score_name].apply(lambda x: isinstance(x, float))))]
 
-    winners = find_class_winners(contestants)
+    winners = find_award_winners(hit_contestants)
     write_winners(winners)
 
     return True
