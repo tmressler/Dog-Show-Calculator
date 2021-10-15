@@ -21,6 +21,9 @@ class MainWindow(QWidget):
         select_file_button.clicked.connect(self.select_file)
         self.output_file_field = QLineEdit()
         self.output_file_field.editingFinished.connect(self.output_manually_changed)
+        self.return_multiple_away_winners = QCheckBox()
+        self.return_multiple_away_winners.setText('Return multiple award winners (when tied)')
+        self.return_multiple_away_winners.setChecked(True)
         calculate_button = QPushButton('Calculate')
         calculate_button.clicked.connect(self.calculate_function)
         self.status_field = QLabel()
@@ -36,6 +39,8 @@ class MainWindow(QWidget):
         layout.addLayout(input_field_layout)
         layout.addWidget(QLabel('Output File'))
         layout.addWidget(self.output_file_field)
+        layout.addWidget(QLabel('Options'))
+        layout.addWidget(self.return_multiple_away_winners)
         status_layout = QHBoxLayout()
         status_layout.addWidget(calculate_button)
         status_layout.addWidget(self.status_field)
@@ -45,7 +50,8 @@ class MainWindow(QWidget):
         self.setLayout(layout)
 
         # finish setting up some other settings
-        self.setWindowTitle("Trip's Calculator")
+        self.setWindowTitle("Grand Champion Calculator")
+        self.setWindowIcon(QIcon("trip.ico"))
         self.setGeometry(100, 100, 128*3, 0)
 
     def select_file(self) -> None:
