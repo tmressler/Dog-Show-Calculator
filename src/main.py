@@ -1,3 +1,5 @@
+# pyinstaller.exe --onedir --windowed --name "Grand Champion Calculator" .\src\main.py
+
 import sys
 import os
 import json
@@ -5,7 +7,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 
-from src.calculator import calculate
+from calculator import calculate
 
 
 class MainWindow(QWidget):
@@ -17,7 +19,7 @@ class MainWindow(QWidget):
         # import settings
         if not os.path.exists("settings.json"):
             with open("settings.json", 'w') as f:
-                json.dump({"award hierarchy": ["utility", "open", "novice"],
+                json.dump({"class hierarchy": ["utility", "open", "novice"],
                            "defaults": {"break ties by class": False, "write to new file": False}}, f)
 
         with open("settings.json", 'r') as f:
@@ -87,7 +89,7 @@ class MainWindow(QWidget):
         self.setLayout(layout)
 
         # finish setting up some other settings
-        self.setWindowTitle("Grand Champion Calculator")
+        self.setWindowTitle("Grand Champion Calculator v1.0")
         self.setWindowIcon(QIcon("trip.ico"))
         self.setGeometry(100, 100, 128 * 3, 0)
 
@@ -140,16 +142,21 @@ class MainWindow(QWidget):
             type = "rally"
 
         self.status_field.setText("Status: Calculating")
-        status, message = calculate(self.input_file_field.text(), self.output_file_field.text(),
-                                    type)
-        if status:
-            self.status_field.setText("Status: Complete")
-        else:
-            self.status_field.setText(f"Error: {message}")
+        try:
+            status = calculate(self.input_file_field.text(), self.output_file_field.text(), type)
+
+            if status:
+                self.status_field.setText("Status: Complete")
+            else:
+                self.status_field.setText(f"Error: Unknown")
+
+        except Exception as e:
+            self.status_field.setText(f"Error: {e.args[-1]}")
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    app.setStyle('Fusion')
     window = MainWindow()
     window.show()
     app.exec_()

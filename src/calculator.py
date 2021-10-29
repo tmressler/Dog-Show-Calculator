@@ -12,41 +12,8 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.worksheet import Worksheet
 
-'''
-Obedience 
 
-Dog number
-Dog name
-Breed
-Group 
-Score
-Class 
-
-Placement in class first second third and forth highest scores
-
-Highest score in B classes
-
-Highest score combined  utility B and open B
-
-Highest score in each group (herding, sporting, hound, toy, terrier, non-sporting, working)
-
-
-Rally
-
-Number 
-Dog name
-Score 
-class 
-
-First second third and forth place
-
-High combined (rally excellent b and rally advanced b)
-
-High triple ( rally advanced b, rally excellent b, and rally master)
-'''
-
-
-def calculate(input_file: str, output_file: str, type: str, break_tie: bool = False) -> tuple[int, str]:
+def calculate(input_file: str, output_file: str, type: str, break_tie: bool = False) -> bool:
     def find_variable_names(dataframe: DataFrame) -> tuple[str, str, str, str, str, str, str]:
         # determine number column
         r = re.compile(r"[Nn]umber(s)?")
@@ -107,7 +74,7 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
             elif len(matches) > 1:
                 raise KeyError("multiple 'champion' columns detected")
             else:
-                raise KeyError("no 'champion' column detected")
+                champion_name = None
 
             # determine group column
             r = re.compile(r"[Gg]roup(s)?")
@@ -132,15 +99,15 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
 
         # remove NaN entries and remove contestants who did not qualify or were absent
         contestants = contestants.loc[(~contestants[score_name].isna()) &
-                                      (~contestants[score_name].str.contains(r'\D', na=False))].copy()
+                                      (~contestants[score_name].str.match(r'\D+', na=False))].copy()
 
         # convert scores with + values to their base floats, with the count of +s in another column
         contestants.loc[:, 'Pluses'] = contestants[score_name].astype(str).str.count(r'\+')
         contestants.loc[:, score_name] = contestants[score_name].astype(str).replace(r'\++', '', regex=True).astype(
             float)
 
-        rank_dict = {class_.lower(): len(settings["award hierarchy"]) - rank for rank, class_ in
-                     enumerate(settings["award hierarchy"])}
+        rank_dict = {class_.lower(): len(settings["class hierarchy"]) - rank for rank, class_ in
+                     enumerate(settings["class hierarchy"])}
         rank_dict[r".+"] = 0  # all other classes are ranked last
         contestants.loc[:, 'Class Rank'] = contestants[class_name].str.lower().replace(rank_dict, regex=True)
 
@@ -158,7 +125,8 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
 
         if is_award:
             # exclude beginner and preferred classes
-            contestants = contestants.loc[(~contestants[class_name].str.contains(r'begin|preferred', case=False))].copy()
+            contestants = contestants.loc[
+                (~contestants[class_name].str.contains(r'begin|preferred', case=False))].copy()
 
             # in case the contestants only had excluded classes
             if contestants.shape[0] == 0:
@@ -216,15 +184,20 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
 
     def write_winners(workbook: Workbook, contestants: DataFrame, competition_name: str, is_award: bool) -> None:
         if is_award:
-            for c, contestant in enumerate(
-                    dataframe_to_rows(contestants[[number_name, handler_name, call_name]], index=False, header=False)):
-                if c == 0:
-                    workbook.append([competition_name] + contestant)
+            if contestants.shape[0] < 1:
+                workbook.append([competition_name] + ['-'] * 3)
+                workbook[f"A{workbook.max_row}"].font = Font(bold=True)
 
-                    # format competition name
-                    workbook[f"A{workbook.max_row}"].font = Font(bold=True)
-                else:
-                    workbook.append([''] + contestant)
+            else:
+                for c, contestant in enumerate(
+                        dataframe_to_rows(contestants[[number_name, handler_name, call_name]], index=False, header=False)):
+                    if c == 0:
+                        workbook.append([competition_name] + contestant)
+
+                        # format competition name
+                        workbook[f"A{workbook.max_row}"].font = Font(bold=True)
+                    else:
+                        workbook.append([''] + contestant)
 
         else:
             # write competition name and format cells
@@ -246,11 +219,11 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
             if contestants.shape[0] < 1:
                 workbook.append([''] + ['-'] * 3)
             else:
-                position = contestants[score_name].rank(method='min', ascending=False).astype(int)
+                position = list(range(1, contestants.shape[0] + 1))
                 for c, contestant in enumerate(
                         dataframe_to_rows(contestants[[number_name, handler_name, call_name]], index=False,
                                           header=False)):
-                    workbook.append([position.iloc[c]] + contestant)
+                    workbook.append([position[c]] + contestant)
 
                     workbook[f"B{workbook.max_row}"].font = Font(color=text_key[c])
                     workbook[f"B{workbook.max_row}"].fill = PatternFill(start_color=color_key[c],
@@ -276,11 +249,11 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
 
     # make sure input file is valid
     if input_file[-5:] != '.xlsx':
-        return 0, "only .xlsx is supported"
+        raise TypeError("only .xlsx is supported")
 
     # check to see if file exists
     if not os.path.exists(input_file):
-        return 0, "file not found"
+        raise FileNotFoundError("file not found")
 
     # import settings
     if os.path.exists("settings.json"):
@@ -288,8 +261,10 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
             settings = json.load(f)
     else:
         with open("settings.json", 'w') as f:
-            json.dump({{"award hierarchy": ["utility", "open", "novice"],
-                        "defaults": {"multiple award winners": True}}}, f)
+            json.dump({"class hierarchy": ["utility", "open", "novice"],
+                       "defaults": {"break ties by class": False, "write to new file": False}}, f)
+
+        settings = json.load(f)
 
     data = pandas.read_excel(input_file)
 
@@ -298,7 +273,7 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
 
     classes = data[class_name].dropna().unique()  # find set of classes
 
-    data = augment_data(data)  # remove nan rows and contestants with 'AB' or 'NQ'
+    data = augment_data(data)  # remove nan rows and contestants with non-scores
 
     if input_file == output_file:
         output_workbook = openpyxl.load_workbook(input_file)
@@ -319,22 +294,26 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
     output_worksheet[f'D{output_worksheet.max_row}'].font = Font(bold=True)
 
     if type == "obedience":
-        award_conditions = (
+        award_conditions = [
             ("High in Trial", data[class_name].str.contains(r"\sb$", case=False), False),
             ("High Combined", ((data[class_name].str.contains("open b", case=False)) |
                                (data[class_name].str.contains("utility b", case=False))), 2),
             ("High Combined Preferred",
-             ((data[class_name].str.contains("[Pp]referred [Oo]pen")) |
-              (data[class_name].str.contains("[Pp]referred [Uu]tility"))), 2),
-            ("High Scoring Champion of Record", data[champion_name].str.contains('Ch', na=False), False)
-        )
+             ((data[class_name].str.contains("preferred open", case=False)) |
+              (data[class_name].str.contains("preferred utility", case=False))), 2)
+        ]
+        if champion_name is not None:
+            award_conditions.append(
+                ("High Scoring Champion of Record", data[champion_name].str.contains('Ch', na=False), False)
+            )
+
     elif type == "rally":
         award_conditions = (
-            ("High Combined", ((data[class_name].str.contains(r"rally excellent b", case=False)) |
-                               (data[class_name].str.contains(r"rally advanced? b", case=False))), 2),
-            ("High Triple", ((data[class_name].str.contains(r"rally excellent b", case=False)) |
-                             (data[class_name].str.contains(r"rally advanced? b", case=False)) |
-                             (data[class_name].str.contains(r"rally master", case=False))), 3)
+            ("High Combined", ((data[class_name].str.contains(r"r(ally)? excellent b", case=False)) |
+                               (data[class_name].str.contains(r"r(ally)? advanced? b", case=False))), 2),
+            ("High Triple", ((data[class_name].str.contains(r"r(ally)? excellent b", case=False)) |
+                             (data[class_name].str.contains(r"r(ally)? advanced? b", case=False)) |
+                             (data[class_name].str.contains(r"r(ally)? master", case=False))), 3)
         )
     else:
         raise ValueError("type must be 'obedience' or 'rally'")
@@ -356,7 +335,7 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
 
     output_workbook.save(output_file)
 
-    return 1, ""
+    return True
 
 
 if __name__ == '__main__':
@@ -367,9 +346,9 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--no_ties', action='store_true', help="break ties by class if possible")
     args = parser.parse_args()
 
-    status, message = calculate(args.input_file.name, args.output_file, args.competition_type, args.no_ties)
+    status = calculate(args.input_file.name, args.output_file, args.competition_type, args.no_ties)
 
     if status:
         print("Complete")
     else:
-        print(f"Error: {message}")
+        print(f"Unknown Error")
