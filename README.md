@@ -1,10 +1,11 @@
 # Starting
 
-##with Python
+## with Python
 
 Run `python main.py` to start the GUI. To start in the terminal, run `python calculator.py`.
 
-##as an Executable
+## as an Executable
+
 To compile into an executable with PyInstaller on Windows 10, run
 
 `pyinstaller.exe --onedir --windowed --name "Grand Champion Calculator" .\src\main.py`
@@ -55,6 +56,14 @@ worksheet. To write to a new file, check the "Write to a new file" checkbox in "
 
 # Version History
 
+## v1.1
+
+- Optimized find_feature_names function.
+- Renamed some variables for clarity.
+- Added more documentation.
+- Fixed some typos.
+- Added yaml.
+
 ## v1.0
 
-- Initial release
+- Initial release.

@@ -1,5 +1,3 @@
-# pyinstaller.exe --onedir --windowed --name "Grand Champion Calculator" .\src\main.py
-
 import sys
 import os
 import json
@@ -46,7 +44,7 @@ class MainWindow(QWidget):
         output_layout.addWidget(self.output_file_field)
         output_box.setLayout(output_layout)
 
-        # competition type box setup
+        # competition competition_type box setup
         competition_box = QGroupBox("Competition")
         competition_layout = QHBoxLayout()
         self.obedience_button = QRadioButton("Obedience")
@@ -72,7 +70,8 @@ class MainWindow(QWidget):
         # remaining widgets
         calculate_button = QPushButton('Calculate')
         calculate_button.clicked.connect(self.calculate_function)
-        self.status_field = QLabel("Status: Idle", alignment=Qt.AlignCenter)
+        self.status_field = QLabel("Status: Idle")
+        self.status_field.setAlignment(Qt.AlignCenter)
 
         # add widgets/layouts to the main layout
         layout = QVBoxLayout()
@@ -89,7 +88,7 @@ class MainWindow(QWidget):
         self.setLayout(layout)
 
         # finish setting up some other settings
-        self.setWindowTitle("Grand Champion Calculator v1.0")
+        self.setWindowTitle("Grand Champion Calculator v1.1")
         self.setWindowIcon(QIcon("trip.ico"))
         self.setGeometry(100, 100, 128 * 3, 0)
 
@@ -137,13 +136,13 @@ class MainWindow(QWidget):
             self.status_field.setText(f"Error: Competition type required")
             return
         elif self.obedience_button.isChecked():
-            type = "obedience"
+            competition_type = "obedience"
         else:
-            type = "rally"
+            competition_type = "rally"
 
         self.status_field.setText("Status: Calculating")
         try:
-            status = calculate(self.input_file_field.text(), self.output_file_field.text(), type)
+            status = calculate(self.input_file_field.text(), self.output_file_field.text(), competition_type)
 
             if status:
                 self.status_field.setText("Status: Complete")

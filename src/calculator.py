@@ -13,82 +13,74 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.worksheet import Worksheet
 
 
-def calculate(input_file: str, output_file: str, type: str, break_tie: bool = False) -> bool:
-    def find_variable_names(dataframe: DataFrame) -> tuple[str, str, str, str, str, str, str]:
+def calculate(input_file: str, output_file: str, competition_type: str, break_tie: bool = False) -> bool:
+    def find_feature_names(dataframe: DataFrame) -> dict[str: str]:
+        feature_names = {}
+        column_keys = dataframe.keys()
+
         # determine number column
-        r = re.compile(r"[Nn]umber(s)?")
-        matches = list(filter(r.search, dataframe))
-        if len(matches) == 1:
-            number_name = matches[0]
-        elif len(matches) > 1:
+        column_matches = column_keys[column_keys.str.match(r'.*number.*', case=False)]
+        if len(column_matches) == 1:
+            feature_names["number"] = column_matches[0]
+        elif len(column_matches) > 1:
             raise KeyError("multiple 'number' columns detected")
         else:
             raise KeyError("no 'number' column detected")
 
         # determine handler column
-        r = re.compile(r"[Hh]andler(s)?")
-        matches = list(filter(r.search, dataframe))
-        if len(matches) == 1:
-            handler_name = matches[0]
-        elif len(matches) > 1:
+        column_matches = column_keys[column_keys.str.match(r'.*handler.*', case=False)]
+        if len(column_matches) == 1:
+            feature_names["handler"] = column_matches[0]
+        elif len(column_matches) > 1:
             raise KeyError("multiple 'handler' columns detected")
         else:
             raise KeyError("no 'handler' column detected")
 
         # determine call name column
-        r = re.compile(r"[Cc]all [Nn]ame(s)?")
-        matches = list(filter(r.search, dataframe))
-        if len(matches) == 1:
-            call_name = matches[0]
-        elif len(matches) > 1:
+        column_matches = column_keys[column_keys.str.match(r'.*call name.*', case=False)]
+        if len(column_matches) == 1:
+            feature_names["call name"] = column_matches[0]
+        elif len(column_matches) > 1:
             raise KeyError("multiple 'call name' columns detected")
         else:
             raise KeyError("no 'call name' column detected")
 
         # determine class column
-        r = re.compile(r"[Cc]lass(es)?")
-        matches = list(filter(r.search, dataframe))
-        if len(matches) == 1:
-            class_name = matches[0]
-        elif len(matches) > 1:
+        column_matches = column_keys[column_keys.str.match(r'.*class.*', case=False)]
+        if len(column_matches) == 1:
+            feature_names["class"] = column_matches[0]
+        elif len(column_matches) > 1:
             raise KeyError("multiple 'class' columns detected")
         else:
             raise KeyError("no 'class' column detected")
 
         # determine score column
-        r = re.compile(r"[Ss]core(s)?")
-        matches = list(filter(r.search, dataframe))
-        if len(matches) == 1:
-            score_name = matches[0]
-        elif len(matches) > 1:
+        column_matches = column_keys[column_keys.str.match(r'.*score.*', case=False)]
+        if len(column_matches) == 1:
+            feature_names["score"] = column_matches[0]
+        elif len(column_matches) > 1:
             raise KeyError("multiple 'score' columns detected")
         else:
             raise KeyError("no 'score' column detected")
 
-        if type == 'obedience':
+        if competition_type == 'obedience':
             # determine champion column
-            r = re.compile(r"[Cc]hamp(ion)?(s)?")
-            matches = list(filter(r.search, dataframe))
-            if len(matches) == 1:
-                champion_name = matches[0]
-            elif len(matches) > 1:
+            column_matches = column_keys[column_keys.str.match(r'.*champ.*', case=False)]
+            if len(column_matches) == 1:
+                feature_names["champion"] = column_matches[0]
+            elif len(column_matches) > 1:
                 raise KeyError("multiple 'champion' columns detected")
-            else:
-                champion_name = None
 
             # determine group column
-            r = re.compile(r"[Gg]roup(s)?")
-            matches = list(filter(r.search, dataframe))
-            if len(matches) == 1:
-                group_name = matches[0]
-            elif len(matches) > 1:
+            column_matches = column_keys[column_keys.str.match(r'.*group.*', case=False)]
+            if len(column_matches) == 1:
+                feature_names["group"] = column_matches[0]
+            elif len(column_matches) > 1:
                 raise KeyError("multiple 'group' columns detected")
             else:
                 raise KeyError("no 'group' column detected")
-        else:
-            champion_name, group_name = None, None
 
-        return number_name, handler_name, call_name, champion_name, group_name, class_name, score_name
+        return feature_names
 
     def augment_data(contestants: DataFrame) -> DataFrame:
         """
@@ -98,18 +90,17 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
         """
 
         # remove NaN entries and remove contestants who did not qualify or were absent
-        contestants = contestants.loc[(~contestants[score_name].isna()) &
-                                      (~contestants[score_name].str.match(r'\D+', na=False))].copy()
+        contestants = contestants.loc[(~contestants[column_names["score"]].isna()) &
+                                      (~contestants[column_names["score"]].str.match(r'\D+', na=False))].copy()
 
         # convert scores with + values to their base floats, with the count of +s in another column
-        contestants.loc[:, 'Pluses'] = contestants[score_name].astype(str).str.count(r'\+')
-        contestants.loc[:, score_name] = contestants[score_name].astype(str).replace(r'\++', '', regex=True).astype(
-            float)
+        contestants.loc[:, 'Pluses'] = contestants[column_names["score"]].astype(str).str.count(r'\+')
+        contestants.loc[:, column_names["score"]] = contestants[column_names["score"]].astype(str).replace(r'\++', '', regex=True).astype(float)
 
         rank_dict = {class_.lower(): len(settings["class hierarchy"]) - rank for rank, class_ in
                      enumerate(settings["class hierarchy"])}
         rank_dict[r".+"] = 0  # all other classes are ranked last
-        contestants.loc[:, 'Class Rank'] = contestants[class_name].str.lower().replace(rank_dict, regex=True)
+        contestants.loc[:, 'Class Rank'] = contestants[column_names["class"]].str.lower().replace(rank_dict, regex=True)
 
         return contestants
 
@@ -117,7 +108,7 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
                      break_tie: bool = False) -> DataFrame:
 
         # separate out contestants meeting condition and sort them based on numerical score
-        contestants = contestants.loc[condition].sort_values(score_name, ascending=False).copy()  # copy dataframe
+        contestants = contestants.loc[condition].sort_values(column_names["score"], ascending=False).copy()  # copy dataframe
 
         '''# if no contestants match criteria, return
         if contestants.shape[0] == 0:
@@ -126,7 +117,7 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
         if is_award:
             # exclude beginner and preferred classes
             contestants = contestants.loc[
-                (~contestants[class_name].str.contains(r'begin|preferred', case=False))].copy()
+                (~contestants[column_names["class"]].str.contains(r'begin|preferred', case=False))].copy()
 
             # in case the contestants only had excluded classes
             if contestants.shape[0] == 0:
@@ -136,51 +127,51 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
             if combine_scores:
 
                 # pull out contestants that appear in all classes
-                contestant_class_counts = contestants[call_name].value_counts()
-                contestants_in_all_classes = contestants[contestants[call_name].isin(
+                contestant_class_counts = contestants[column_names["call name"]].value_counts()
+                contestants_in_all_classes = contestants[contestants[column_names["call name"]].isin(
                     contestant_class_counts.index[contestant_class_counts.ge(combine_scores)])]
-                contestant_scores = contestants_in_all_classes.groupby(call_name)[score_name].sum().sort_values(
+                contestant_scores = contestants_in_all_classes.groupby(column_names["call name"])[column_names["score"]].sum().sort_values(
                     ascending=False)
                 winning_contestants = contestant_scores.loc[contestant_scores == contestant_scores.max()]
-                winning_info = contestants[contestants[call_name].isin(winning_contestants.keys())]
+                winning_info = contestants[contestants[column_names["call name"]].isin(winning_contestants.keys())]
 
-                combined_info = winning_info[~winning_info[call_name].duplicated()]
-                combined_info.loc[:, score_name] = winning_contestants.max()
+                combined_info = winning_info[~winning_info[column_names["call name"]].duplicated()]
+                combined_info.loc[:, column_names["score"]] = winning_contestants.max()
 
                 if break_tie and combined_info.shape[0] > 1:
                     # sort based on class and scores
                     sorted_winning_contestants = contestants[
-                        contestants[call_name].isin(winning_contestants.keys())].sort_values(
-                        ['Class Rank', score_name, 'Pluses'], ascending=False)
+                        contestants[column_names["call name"]].isin(winning_contestants.keys())].sort_values(
+                        ['Class Rank', column_names["score"], 'Pluses'], ascending=False)
 
-                    return combined_info[combined_info[call_name] == sorted_winning_contestants.iloc[0][call_name]]
+                    return combined_info[combined_info[column_names["call name"]] == sorted_winning_contestants.iloc[0][column_names["call name"]]]
 
                 else:
                     return combined_info
 
             else:
                 # the highest scores amongst contestants
-                contestants = contestants[contestants[score_name] == contestants[score_name].max()]
+                contestants = contestants[contestants[column_names["score"]] == contestants[column_names["score"]].max()]
                 if break_tie:  # break tie by class
                     score, class_rank, pluses = \
-                        contestants.sort_values([score_name, 'Class Rank', 'Pluses'], ascending=False).iloc[0][
-                            [score_name, 'Class Rank', 'Pluses']]
-                    return contestants.loc[(contestants[score_name] == score) &
+                        contestants.sort_values([column_names["score"], 'Class Rank', 'Pluses'], ascending=False).iloc[0][
+                            [column_names["score"], 'Class Rank', 'Pluses']]
+                    return contestants.loc[(contestants[column_names["score"]] == score) &
                                            (contestants['Class Rank'] == class_rank) &
                                            (contestants['Pluses'] == pluses)]
                 else:
                     # if there is more than one class, don't break by pluses
-                    if len(contestants[class_name].unique()) > 1:
+                    if len(contestants[column_names["class"]].unique()) > 1:
                         return contestants
                     else:
-                        score, pluses = contestants.sort_values([score_name, 'Pluses'], ascending=False).iloc[0][
-                            [score_name, 'Pluses']]
-                        return contestants.loc[(contestants[score_name] == score) &
+                        score, pluses = contestants.sort_values([column_names["score"], 'Pluses'], ascending=False).iloc[0][
+                            [column_names["score"], 'Pluses']]
+                        return contestants.loc[(contestants[column_names["score"]] == score) &
                                                (contestants['Pluses'] == pluses)]
 
         # all the same class, return top 4, tie breaking done by pluses
         else:
-            return contestants.sort_values([score_name, 'Pluses'], ascending=False)[:4]
+            return contestants.sort_values([column_names["score"], 'Pluses'], ascending=False)[:4]
 
     def write_winners(workbook: Workbook, contestants: DataFrame, competition_name: str, is_award: bool) -> None:
         if is_award:
@@ -190,7 +181,8 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
 
             else:
                 for c, contestant in enumerate(
-                        dataframe_to_rows(contestants[[number_name, handler_name, call_name]], index=False, header=False)):
+                        dataframe_to_rows(contestants[[column_names["number"], column_names["handler"], column_names["call name"]]], index=False,
+                                          header=False)):
                     if c == 0:
                         workbook.append([competition_name] + contestant)
 
@@ -207,7 +199,7 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
             workbook.merge_cells(start_row=workbook.max_row, start_column=2, end_row=workbook.max_row, end_column=4)
 
             # write subheaders
-            workbook.append(['', number_name, handler_name, call_name])
+            workbook.append(['', column_names["number"], column_names["handler"], column_names["call name"]])
             workbook[f"B{workbook.max_row}"].font = Font(bold=True)  # TODO: probably a better way to do more than one
             workbook[f"C{workbook.max_row}"].font = Font(bold=True)
             workbook[f"D{workbook.max_row}"].font = Font(bold=True)
@@ -221,7 +213,7 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
             else:
                 position = list(range(1, contestants.shape[0] + 1))
                 for c, contestant in enumerate(
-                        dataframe_to_rows(contestants[[number_name, handler_name, call_name]], index=False,
+                        dataframe_to_rows(contestants[[column_names["number"], column_names["handler"], column_names["call name"]]], index=False,
                                           header=False)):
                     workbook.append([position[c]] + contestant)
 
@@ -269,9 +261,9 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
     data = pandas.read_excel(input_file)
 
     # find column names
-    number_name, handler_name, call_name, champion_name, group_name, class_name, score_name = find_variable_names(data)
+    column_names = find_feature_names(data)
 
-    classes = data[class_name].dropna().unique()  # find set of classes
+    classes = data[column_names["class"]].dropna().unique()  # find set of classes
 
     data = augment_data(data)  # remove nan rows and contestants with non-scores
 
@@ -284,51 +276,51 @@ def calculate(input_file: str, output_file: str, type: str, break_tie: bool = Fa
         output_worksheet = output_workbook.active
 
     for class_ in classes:
-        winners = find_winners(data, Series(data[class_name] == class_), False, break_tie=break_tie)
+        winners = find_winners(data, Series(data[column_names["class"]] == class_), False, break_tie=break_tie)
         write_winners(output_worksheet, winners, class_, False)
 
     # add headers for award winners
-    output_worksheet.append(['', number_name, handler_name, call_name])
+    output_worksheet.append(['', column_names["number"], column_names["handler"], column_names["call name"]])
     output_worksheet[f'B{output_worksheet.max_row}'].font = Font(bold=True)
     output_worksheet[f'C{output_worksheet.max_row}'].font = Font(bold=True)
     output_worksheet[f'D{output_worksheet.max_row}'].font = Font(bold=True)
 
-    if type == "obedience":
+    if competition_type == "obedience":
         award_conditions = [
-            ("High in Trial", data[class_name].str.contains(r"\sb$", case=False), False),
-            ("High Combined", ((data[class_name].str.contains("open b", case=False)) |
-                               (data[class_name].str.contains("utility b", case=False))), 2),
+            ("High in Trial", data[column_names["class"]].str.contains(r"\sb$", case=False), False),
+            ("High Combined", ((data[column_names["class"]].str.contains("open b", case=False)) |
+                               (data[column_names["class"]].str.contains("utility b", case=False))), 2),
             ("High Combined Preferred",
-             ((data[class_name].str.contains("preferred open", case=False)) |
-              (data[class_name].str.contains("preferred utility", case=False))), 2)
+             ((data[column_names["class"]].str.contains("preferred open", case=False)) |
+              (data[column_names["class"]].str.contains("preferred utility", case=False))), 2)
         ]
-        if champion_name is not None:
+        if column_names["champion"] is not None:
             award_conditions.append(
-                ("High Scoring Champion of Record", data[champion_name].str.contains('Ch', na=False), False)
+                ("High Scoring Champion of Record", data[column_names["champion"]].str.contains('Ch', na=False), False)
             )
 
-    elif type == "rally":
+    elif competition_type == "rally":
         award_conditions = (
-            ("High Combined", ((data[class_name].str.contains(r"r(ally)? excellent b", case=False)) |
-                               (data[class_name].str.contains(r"r(ally)? advanced? b", case=False))), 2),
-            ("High Triple", ((data[class_name].str.contains(r"r(ally)? excellent b", case=False)) |
-                             (data[class_name].str.contains(r"r(ally)? advanced? b", case=False)) |
-                             (data[class_name].str.contains(r"r(ally)? master", case=False))), 3)
+            ("High Combined", ((data[column_names["class"]].str.contains(r"r(ally)? excellent b", case=False)) |
+                               (data[column_names["class"]].str.contains(r"r(ally)? advanced? b", case=False))), 2),
+            ("High Triple", ((data[column_names["class"]].str.contains(r"r(ally)? excellent b", case=False)) |
+                             (data[column_names["class"]].str.contains(r"r(ally)? advanced? b", case=False)) |
+                             (data[column_names["class"]].str.contains(r"r(ally)? master", case=False))), 3)
         )
     else:
-        raise ValueError("type must be 'obedience' or 'rally'")
+        raise ValueError("competition_type must be 'obedience' or 'rally'")
 
     # find award winners
     for award, award_condition, combine_scores in award_conditions:
         winners = find_winners(data, award_condition, True, combine_scores=combine_scores, break_tie=break_tie)
         write_winners(output_worksheet, winners, award, True)
 
-    if type == "obedience":
-        groups = [group for group in data[group_name].unique() if str(group) != 'nan']  # find set of groups
+    if competition_type == "obedience":
+        groups = [group for group in data[column_names["group"]].unique() if str(group) != 'nan']  # find set of groups
 
         # find group winners
         for group in groups:
-            winners = find_winners(data, Series(data[group_name] == group), True, break_tie=break_tie)
+            winners = find_winners(data, Series(data[column_names["group"]] == group), True, break_tie=break_tie)
             write_winners(output_worksheet, winners, group, True)
 
     optimal_width(output_worksheet)
