@@ -10,10 +10,10 @@ To compile into an executable with PyInstaller on Windows 10, run
 
 `pyinstaller.exe --onedir --windowed --name "Grand Champion Calculator" .\src\main.py`
 
-Once compiled, the application folder will be under `dist\Grand Champion Calculator\ `. Run
+Once compiled, the application folder will be under `dist\Grand Champion Calculator\`. Run
 `Grand Champion Calculator.exe` to start the GUI.
 
-Note: copy `trip.ico` and `icons8-xlsx-160.png` to `dist\Grand Champion Calculator\ ` for the icons to display after
+Note: copy `trip.ico` and `icons8-xlsx-160.png` to `dist\Grand Champion Calculator\` for the icons to display after
 compiling.
 
 # General Usage

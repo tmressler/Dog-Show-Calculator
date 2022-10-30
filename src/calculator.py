@@ -1,7 +1,6 @@
 import os
 import argparse
 import json
-import re
 import pandas
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
@@ -19,7 +18,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
         column_keys = dataframe.keys()
 
         # determine number column
-        column_matches = column_keys[column_keys.str.match(r'.*number.*', case=False)]
+        column_matches = column_keys[column_keys.astype(str).str.match(r'.*number.*', case=False)]
         if len(column_matches) == 1:
             feature_names["number"] = column_matches[0]
         elif len(column_matches) > 1:
@@ -28,7 +27,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
             raise KeyError("no 'number' column detected")
 
         # determine handler column
-        column_matches = column_keys[column_keys.str.match(r'.*handler.*', case=False)]
+        column_matches = column_keys[column_keys.astype(str).str.match(r'.*handler.*', case=False)]
         if len(column_matches) == 1:
             feature_names["handler"] = column_matches[0]
         elif len(column_matches) > 1:
@@ -37,7 +36,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
             raise KeyError("no 'handler' column detected")
 
         # determine call name column
-        column_matches = column_keys[column_keys.str.match(r'.*call name.*', case=False)]
+        column_matches = column_keys[column_keys.astype(str).str.match(r'.*call name.*', case=False)]
         if len(column_matches) == 1:
             feature_names["call name"] = column_matches[0]
         elif len(column_matches) > 1:
@@ -46,7 +45,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
             raise KeyError("no 'call name' column detected")
 
         # determine class column
-        column_matches = column_keys[column_keys.str.match(r'.*class.*', case=False)]
+        column_matches = column_keys[column_keys.astype(str).str.match(r'.*class.*', case=False)]
         if len(column_matches) == 1:
             feature_names["class"] = column_matches[0]
         elif len(column_matches) > 1:
@@ -55,7 +54,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
             raise KeyError("no 'class' column detected")
 
         # determine score column
-        column_matches = column_keys[column_keys.str.match(r'.*score.*', case=False)]
+        column_matches = column_keys[column_keys.astype(str).str.match(r'.*score.*', case=False)]
         if len(column_matches) == 1:
             feature_names["score"] = column_matches[0]
         elif len(column_matches) > 1:
@@ -65,14 +64,14 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
 
         if competition_type == 'obedience':
             # determine champion column
-            column_matches = column_keys[column_keys.str.match(r'.*champ.*', case=False)]
+            column_matches = column_keys[column_keys.astype(str).str.match(r'.*champ.*', case=False)]
             if len(column_matches) == 1:
                 feature_names["champion"] = column_matches[0]
             elif len(column_matches) > 1:
                 raise KeyError("multiple 'champion' columns detected")
 
             # determine group column
-            column_matches = column_keys[column_keys.str.match(r'.*group.*', case=False)]
+            column_matches = column_keys[column_keys.astype(str).str.match(r'.*group.*', case=False)]
             if len(column_matches) == 1:
                 feature_names["group"] = column_matches[0]
             elif len(column_matches) > 1:
@@ -91,7 +90,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
 
         # remove NaN entries and remove contestants who did not qualify or were absent
         contestants = contestants.loc[(~contestants[column_names["score"]].isna()) &
-                                      (~contestants[column_names["score"]].str.match(r'\D+', na=False))].copy()
+                                      (~contestants[column_names["score"]].astype(str).str.match(r'\D+', na=False))].copy()
 
         # convert scores with + values to their base floats, with the count of +s in another column
         contestants.loc[:, 'Pluses'] = contestants[column_names["score"]].astype(str).str.count(r'\+')
@@ -100,7 +99,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
         rank_dict = {class_.lower(): len(settings["class hierarchy"]) - rank for rank, class_ in
                      enumerate(settings["class hierarchy"])}
         rank_dict[r".+"] = 0  # all other classes are ranked last
-        contestants.loc[:, 'Class Rank'] = contestants[column_names["class"]].str.lower().replace(rank_dict, regex=True)
+        contestants.loc[:, 'Class Rank'] = contestants[column_names["class"]].astype(str).str.lower().replace(rank_dict, regex=True)
 
         return contestants
 
@@ -117,7 +116,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
         if is_award:
             # exclude beginner and preferred classes
             contestants = contestants.loc[
-                (~contestants[column_names["class"]].str.contains(r'begin|preferred', case=False))].copy()
+                (~contestants[column_names["class"]].astype(str).str.contains(r'begin|preferred', case=False))].copy()
 
             # in case the contestants only had excluded classes
             if contestants.shape[0] == 0:
@@ -174,58 +173,71 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
             return contestants.sort_values([column_names["score"], 'Pluses'], ascending=False)[:4]
 
     def write_winners(workbook: Workbook, contestants: DataFrame, competition_name: str, is_award: bool) -> None:
+        winners = contestants.copy().reset_index()
+
         if is_award:
-            if contestants.shape[0] < 1:
-                workbook.append([competition_name] + ['-'] * 3)
+            if winners.shape[0] < 1:
+                workbook.append([competition_name] + ['-'] * 4)
                 workbook[f"A{workbook.max_row}"].font = Font(bold=True)
 
             else:
-                for c, contestant in enumerate(
-                        dataframe_to_rows(contestants[[column_names["number"], column_names["handler"], column_names["call name"]]], index=False,
+                # convert scores with + values to back to their display scores
+                winners.loc[:, 'Pluses'] = pandas.Series(['+'] * winners.shape[0]).str.repeat(winners['Pluses']).astype(str).copy()
+                winners.loc[:, 'Score'] = winners['Score'].astype(int).astype(str) + winners['Pluses']
+                for w, winners in enumerate(
+                        dataframe_to_rows(winners[[column_names["number"], column_names["handler"], column_names["call name"], column_names['score']]], index=False,
                                           header=False)):
-                    if c == 0:
-                        workbook.append([competition_name] + contestant)
+                    if w == 0:
+                        workbook.append([competition_name] + winners)
 
                         # format competition name
                         workbook[f"A{workbook.max_row}"].font = Font(bold=True)
                     else:
-                        workbook.append([''] + contestant)
+                        workbook.append([''] + winners)
 
         else:
             # write competition name and format cells
             workbook.append(['', competition_name])
             workbook[f"B{workbook.max_row}"].font = Font(bold=True)
             workbook[f"B{workbook.max_row}"].alignment = Alignment(horizontal='center')
-            workbook.merge_cells(start_row=workbook.max_row, start_column=2, end_row=workbook.max_row, end_column=4)
+            workbook.merge_cells(start_row=workbook.max_row, start_column=2, end_row=workbook.max_row, end_column=5)
 
             # write subheaders
-            workbook.append(['', column_names["number"], column_names["handler"], column_names["call name"]])
+            workbook.append(['', column_names["number"], column_names["handler"], column_names["call name"], column_names["score"]])
             workbook[f"B{workbook.max_row}"].font = Font(bold=True)  # TODO: probably a better way to do more than one
             workbook[f"C{workbook.max_row}"].font = Font(bold=True)
             workbook[f"D{workbook.max_row}"].font = Font(bold=True)
+            workbook[f"E{workbook.max_row}"].font = Font(bold=True)
 
             color_key = {0: '000000FF', 1: '00FF0000', 2: '00FFFF00', 3: '00FFFFFF'}
             text_key = {0: '00FFFFFF', 1: '00FFFFFF', 2: '00000000', 3: '00000000'}
 
             # write winners
-            if contestants.shape[0] < 1:
-                workbook.append([''] + ['-'] * 3)
+            if winners.shape[0] < 1:
+                workbook.append([''] + ['-'] * 4)
             else:
-                position = list(range(1, contestants.shape[0] + 1))
-                for c, contestant in enumerate(
-                        dataframe_to_rows(contestants[[column_names["number"], column_names["handler"], column_names["call name"]]], index=False,
-                                          header=False)):
-                    workbook.append([position[c]] + contestant)
+                # convert scores with + values to back to their display scores
+                winners.loc[:, 'Pluses'] = pandas.Series(['+'] * winners.shape[0]).str.repeat(winners['Pluses']).astype(str).copy()
+                winners.loc[:, 'Score'] = winners['Score'].astype(int).astype(str) + winners['Pluses']
 
-                    workbook[f"B{workbook.max_row}"].font = Font(color=text_key[c])
-                    workbook[f"B{workbook.max_row}"].fill = PatternFill(start_color=color_key[c],
-                                                                        end_color=color_key[c], fill_type='solid')
-                    workbook[f"C{workbook.max_row}"].font = Font(color=text_key[c])
-                    workbook[f"C{workbook.max_row}"].fill = PatternFill(start_color=color_key[c],
-                                                                        end_color=color_key[c], fill_type='solid')
-                    workbook[f"D{workbook.max_row}"].font = Font(color=text_key[c])
-                    workbook[f"D{workbook.max_row}"].fill = PatternFill(start_color=color_key[c],
-                                                                        end_color=color_key[c], fill_type='solid')
+                position = list(range(1, winners.shape[0] + 1))
+                for w, winners in enumerate(
+                        dataframe_to_rows(winners[[column_names["number"], column_names["handler"], column_names["call name"], column_names["score"]]], index=False,
+                                          header=False)):
+                    workbook.append([position[w]] + winners)
+
+                    workbook[f"B{workbook.max_row}"].font = Font(color=text_key[w])
+                    workbook[f"B{workbook.max_row}"].fill = PatternFill(start_color=color_key[w],
+                                                                        end_color=color_key[w], fill_type='solid')
+                    workbook[f"C{workbook.max_row}"].font = Font(color=text_key[w])
+                    workbook[f"C{workbook.max_row}"].fill = PatternFill(start_color=color_key[w],
+                                                                        end_color=color_key[w], fill_type='solid')
+                    workbook[f"D{workbook.max_row}"].font = Font(color=text_key[w])
+                    workbook[f"D{workbook.max_row}"].fill = PatternFill(start_color=color_key[w],
+                                                                        end_color=color_key[w], fill_type='solid')
+                    workbook[f"E{workbook.max_row}"].font = Font(color=text_key[w])
+                    workbook[f"E{workbook.max_row}"].fill = PatternFill(start_color=color_key[w],
+                                                                        end_color=color_key[w], fill_type='solid')
 
             workbook.append([''])
 
@@ -254,7 +266,7 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
     else:
         with open("settings.json", 'w') as f:
             json.dump({"class hierarchy": ["utility", "open", "novice"],
-                       "defaults": {"break ties by class": False, "write to new file": False}}, f)
+                       "defaults": {"break ties by class": True, "write to new file": True}}, f)
 
         settings = json.load(f)
 
@@ -287,25 +299,25 @@ def calculate(input_file: str, output_file: str, competition_type: str, break_ti
 
     if competition_type == "obedience":
         award_conditions = [
-            ("High in Trial", data[column_names["class"]].str.contains(r"\sb$", case=False), False),
-            ("High Combined", ((data[column_names["class"]].str.contains("open b", case=False)) |
-                               (data[column_names["class"]].str.contains("utility b", case=False))), 2),
-            ("High Combined Preferred",
-             ((data[column_names["class"]].str.contains("preferred open", case=False)) |
-              (data[column_names["class"]].str.contains("preferred utility", case=False))), 2)
+            ("High in Trial (All Classes)", data[column_names["class"]].astype(str).str.contains(r".", case=False), False),
+            ("High Combined (Open B + Utility B)", ((data[column_names["class"]].astype(str).str.contains("open b", case=False)) |
+                               (data[column_names["class"]].astype(str).str.contains("utility b", case=False))), 2),
+            ("High Combined Preferred (Preferred Open + Preferred Utility)",
+             ((data[column_names["class"]].astype(str).str.contains("preferred open", case=False)) |
+              (data[column_names["class"]].astype(str).str.contains("preferred utility", case=False))), 2)
         ]
-        if column_names["champion"] is not None:
+        if 'champion' in column_names:
             award_conditions.append(
-                ("High Scoring Champion of Record", data[column_names["champion"]].str.contains('Ch', na=False), False)
+                ("High Scoring Champion of Record", data[column_names["champion"]].astype(str).str.contains('Ch', na=False), False)
             )
 
     elif competition_type == "rally":
         award_conditions = (
-            ("High Combined", ((data[column_names["class"]].str.contains(r"r(ally)? excellent b", case=False)) |
-                               (data[column_names["class"]].str.contains(r"r(ally)? advanced? b", case=False))), 2),
-            ("High Triple", ((data[column_names["class"]].str.contains(r"r(ally)? excellent b", case=False)) |
-                             (data[column_names["class"]].str.contains(r"r(ally)? advanced? b", case=False)) |
-                             (data[column_names["class"]].str.contains(r"r(ally)? master", case=False))), 3)
+            ("High Combined (Rally Excellent B + Rally Advanced B)", ((data[column_names["class"]].astype(str).str.contains(r"r(ally)? excellent b", case=False)) |
+                               (data[column_names["class"]].astype(str).str.contains(r"r(ally)? advanced? b", case=False))), 2),
+            ("High Triple (High Combined + Rally Master)", ((data[column_names["class"]].astype(str).str.contains(r"r(ally)? excellent b", case=False)) |
+                             (data[column_names["class"]].astype(str).str.contains(r"r(ally)? advanced? b", case=False)) |
+                             (data[column_names["class"]].astype(str).str.contains(r"r(ally)? master", case=False))), 3)
         )
     else:
         raise ValueError("competition_type must be 'obedience' or 'rally'")
